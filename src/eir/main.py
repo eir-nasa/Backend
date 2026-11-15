@@ -11,6 +11,7 @@ from eir.config import Settings
 from eir.database import open_database
 from eir.health_records import router as health_records_router
 from eir.profiles import router as profiles_router
+from eir.wellbeing import router as wellbeing_router
 
 
 class HealthResponse(BaseModel):
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(profiles_router)
     app.include_router(health_records_router)
+    app.include_router(wellbeing_router)
 
     @app.get("/api/v1/health", response_model=HealthResponse, operation_id="getHealth")
     async def get_health() -> HealthResponse:

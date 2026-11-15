@@ -78,6 +78,10 @@ def store_health_record(connection: sqlite3.Connection, owner_id: str, record: H
         ).fetchone()
         if existing:
             status = "duplicate" if existing == (owner_id, encoded) else "conflict"
+        elif connection.execute(
+            "SELECT 1 FROM wellbeing_checkins WHERE record_id = ?", (record_id,)
+        ).fetchone():
+            status = "conflict"
         else:
             connection.execute(
                 "INSERT INTO health_records (record_id, owner_id, record_json, received_at) "
