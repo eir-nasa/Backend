@@ -24,8 +24,7 @@ failures. Login rate limiting is not implemented. Offline unlock and Android
 cache/outbox handling remain Android responsibilities and are not implemented
 here. Authenticated profile, physical-health history and wellbeing history are
 implemented. Both record types have validated SQLite storage, immutable IDs and
-owner-scoped pagination; their storage interfaces are not yet connected to the
-unimplemented sync endpoint. Wellbeing dimensions are experimental self-reports,
+owner-scoped pagination, connected to the upload-only sync endpoint. Wellbeing dimensions are experimental self-reports,
 not clinically validated scores. Bootstrap returns the authenticated profile and
 a combined page of both history types, ordered by record ID, with the limit
 applied across both arrays. The authenticated alerts endpoint returns stored
@@ -36,3 +35,13 @@ have been assessed.
 History and bootstrap use record-ID ordering and opaque cursors; pages are not a
 consistent snapshot when records are added between requests. Records inserted
 before a continuation cursor will not appear in later pages.
+
+Integration tests exercise synthetic login, sync, isolation, history, logout,
+restart and replay, and validate observed response bodies against baseline JSON
+schemas. Generated OpenAPI operation paths and IDs match the baseline, as does
+the profile schema. **OpenAPI compatibility remains incomplete:** FastAPI's
+generated document omits the bearer security scheme, the sync request schema,
+several response schemas and documented status codes, and describes logout as
+200 instead of 204. The OpenAPI HTTP endpoint is disabled; the inspection uses
+`app.openapi()`. Matching operation inventory and tested response instances do
+not establish full semantic compatibility. Login rate limiting is not implemented.
