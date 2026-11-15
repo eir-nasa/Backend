@@ -1,0 +1,12 @@
+[
+ {"id":"foundation","description":"Implement FastAPI startup, configuration, database lifecycle, SQLite migrations, health endpoint and focused tests. Respect contract exactly.","dependencies":[]},
+ {"id":"authentication","description":"Implement synthetic-account login, refresh/logout, session revocation, password hashing and auth tests, strictly matching contract.","dependencies":["foundation"]},
+ {"id":"profiles","description":"Implement /users/me with strict owner isolation and negative authorization tests.","dependencies":["authentication"]},
+ {"id":"health","description":"Implement physical-health record persistence, read pagination and schema validation with tests.","dependencies":["profiles"]},
+ {"id":"wellbeing","description":"Implement wellbeing check-in persistence and read pagination with tests. Do not claim clinical scoring.","dependencies":["profiles"]},
+ {"id":"bootstrap","description":"Implement authenticated initial profile/history pagination with stable cursor and tests.","dependencies":["health","wellbeing"]},
+ {"id":"synchronization","description":"Implement upload-only batch sync, stable UUID idempotence, per-item acknowledgements, transactionality and duplicate/conflict/unauthorized tests.","dependencies":["bootstrap"]},
+ {"id":"risk-engine","description":"Implement only the approved RiskAlert API and explainable non-diagnostic deterministic rules if specified; otherwise document BLOCKED rule thresholds, never fabricate medical cutoffs.","dependencies":["health","wellbeing","synchronization"]},
+ {"id":"integration","description":"Add end-to-end synthetic-data API tests, auth isolation, sync replay, errors, and verify the live OpenAPI matches the baseline (semantic compatibility).","dependencies":["risk-engine"]},
+ {"id":"deployment-preparation","description":"Document Docker image, Compose for Ubuntu EC2 with FastAPI loopback exposure, Caddy deployment guidance and tests without touching AWS/cloudflare.","dependencies":["integration"]}
+]

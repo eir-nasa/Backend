@@ -1,0 +1,436 @@
+openapi: 3.1.0
+info:
+  title: EIR Prototype API
+  version: 0.1.0-draft
+  description: |
+    REVIEW DRAFT — not an implemented or approved API.
+    Android runs Google AI Edge on-device; the backend does not execute Apollo.
+    Synthetic accounts and data only. Synchronization is upload-only (Level 2).
+servers:
+  - url: https://api.example.org
+    description: Placeholder for the AWS HTTPS endpoint; replace after DNS approval.
+tags:
+  - name: System
+  - name: Auth
+  - name: Profile
+  - name: Health
+  - name: Wellbeing
+  - name: Alerts
+  - name: Sync
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Check API availability (not clinical health)
+      security: []
+      responses:
+        '200':
+          description: API is responsive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Authenticate online and register session for a device
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Rotate an online refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refresh_token, device_id]
+              properties:
+                refresh_token: { type: string, minLength: 1 }
+                device_id: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Rotated credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTokens'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Revoke remote session; local cleanup is a separate Android responsibility
+      responses:
+        '204': { description: Session revoked (idempotent where feasible) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/users/me:
+    get:
+      tags: [Profile]
+      operationId: getMe
+      summary: Get the authenticated astronaut profile
+      responses:
+        '200':
+          description: Own profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AstronautProfile'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/users/me/bootstrap:
+    get:
+      tags: [Profile]
+      operationId: getBootstrapPage
+      summary: Fetch an initial, paginated copy of the authenticated user's history
+      description: |
+        An initial download only, not continuous bidirectional synchronization.
+        Each page is authorized for the current account. Consistent snapshot
+        semantics across pages are not guaranteed in this draft.
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+          description: Opaque continuation cursor, omitted for first page
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: Profile and historical records page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootstrapPage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/users/me/health-records:
+    get:
+      tags: [Health]
+      operationId: getMyHealthRecords
+      summary: Retrieve authenticated user's server-side health history
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated health records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthPage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/users/me/wellbeing-checkins:
+    get:
+      tags: [Wellbeing]
+      operationId: getMyWellbeingCheckins
+      summary: Retrieve authenticated user's server-side wellbeing history
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated check-ins
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WellbeingPage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/users/me/alerts:
+    get:
+      tags: [Alerts]
+      operationId: getMyAlerts
+      summary: Retrieve risk alerts already calculated by the backend
+      responses:
+        '200':
+          description: Existing risk alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RiskAlert' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/sync/records:
+    post:
+      tags: [Sync]
+      operationId: pushRecords
+      summary: Upload immutable synthetic health/wellbeing records with per-record acknowledgements
+      description: |
+        Level 2 upload-only sync. The server derives user ownership from the
+        authenticated session. A record_id is globally stable and unique.
+        Accepted and byte/semantically equivalent replays are acknowledged;
+        differing payload for the same ID is a conflict. The backend must
+        atomically persist a record and its deduplication marker. A partial
+        valid batch returns individual results with HTTP 200; no acknowledgement
+        should be inferred from network timeouts or ambiguous responses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncBatchRequest'
+      responses:
+        '200':
+          description: Batch processed; examine result for every item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncBatchResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Server-validated online access token; not used as an offline password verifier.
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Unauthorized:
+      description: Missing, invalid or expired credentials
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    RateLimited:
+      description: Rate limit exceeded
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Unavailable:
+      description: Service temporarily unavailable
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+  schemas:
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        retryable: { type: boolean, default: false }
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, const: ok }
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, device_id]
+      properties:
+        username: { type: string, minLength: 1 }
+        password: { type: string, minLength: 1, format: password }
+        device_id: { type: string, minLength: 1, maxLength: 128 }
+    SessionTokens:
+      type: object
+      additionalProperties: false
+      required: [access_token, refresh_token, token_type, expires_in]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, minimum: 1, description: Seconds for the online access token; distinct from 24-hour offline window }
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required: [access_token, refresh_token, token_type, expires_in, user, online_authenticated_at]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, const: Bearer }
+        expires_in: { type: integer, minimum: 1 }
+        user: { $ref: '#/components/schemas/AstronautProfile' }
+        online_authenticated_at: { type: string, format: date-time }
+    AstronautProfile:
+      type: object
+      additionalProperties: false
+      required: [user_id, astronaut_id, username, display_name, mission_id, profile_version]
+      properties:
+        user_id: { type: string }
+        astronaut_id: { type: string }
+        username: { type: string }
+        display_name: { type: string }
+        mission_id: { type: string }
+        profile_version: { type: integer, minimum: 1 }
+    HealthPayload:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        heart_rate_bpm: { type: integer, minimum: 0 }
+        glucose_mg_dl: { type: number, minimum: 0 }
+        temperature_c: { type: number }
+        sleep_hours: { type: number, minimum: 0, maximum: 24 }
+        systolic_bp_mmhg: { type: integer, minimum: 0 }
+        diastolic_bp_mmhg: { type: integer, minimum: 0 }
+      description: Experimental demo only. No clinical thresholds implied by basic syntactic ranges.
+    WellbeingPayload:
+      type: object
+      additionalProperties: false
+      required: [mood, connection, energy, purpose, sleep]
+      properties:
+        mood: { type: integer, minimum: 1, maximum: 5 }
+        connection: { type: integer, minimum: 1, maximum: 5 }
+        energy: { type: integer, minimum: 1, maximum: 5 }
+        purpose: { type: integer, minimum: 1, maximum: 5 }
+        sleep: { type: integer, minimum: 1, maximum: 5 }
+        note: { type: string, maxLength: 500 }
+      description: Experimental self-ratings, not a validated psychological scale.
+    RecordBase:
+      type: object
+      required: [record_id, recorded_at, schema_version]
+      properties:
+        record_id: { type: string, format: uuid }
+        recorded_at: { type: string, format: date-time }
+        schema_version: { type: integer, const: 1 }
+    HealthSyncRecord:
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { type: string, const: health_record }
+            payload: { $ref: '#/components/schemas/HealthPayload' }
+    WellbeingSyncRecord:
+      allOf:
+        - $ref: '#/components/schemas/RecordBase'
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { type: string, const: wellbeing_checkin }
+            payload: { $ref: '#/components/schemas/WellbeingPayload' }
+    SyncRecord:
+      oneOf:
+        - $ref: '#/components/schemas/HealthSyncRecord'
+        - $ref: '#/components/schemas/WellbeingSyncRecord'
+      discriminator:
+        propertyName: type
+        mapping:
+          health_record: '#/components/schemas/HealthSyncRecord'
+          wellbeing_checkin: '#/components/schemas/WellbeingSyncRecord'
+    SyncBatchRequest:
+      type: object
+      additionalProperties: false
+      required: [device_id, records]
+      properties:
+        device_id: { type: string, minLength: 1, maxLength: 128 }
+        records:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: '#/components/schemas/SyncRecord' }
+      description: Owner is inferred from the online access token, not from caller-supplied astronaut_id.
+    SyncItemResult:
+      type: object
+      additionalProperties: false
+      required: [record_id, status]
+      properties:
+        record_id: { type: string, format: uuid }
+        status: { type: string, enum: [accepted, duplicate, rejected, conflict, retryable] }
+        error: { $ref: '#/components/schemas/ApiError' }
+    SyncBatchResponse:
+      type: object
+      additionalProperties: false
+      required: [results, server_time]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/SyncItemResult' }
+        server_time: { type: string, format: date-time }
+    StoredHealthRecord:
+      allOf:
+        - $ref: '#/components/schemas/HealthSyncRecord'
+        - type: object
+          required: [received_at]
+          properties:
+            received_at: { type: string, format: date-time }
+    StoredWellbeingCheckin:
+      allOf:
+        - $ref: '#/components/schemas/WellbeingSyncRecord'
+        - type: object
+          required: [received_at]
+          properties:
+            received_at: { type: string, format: date-time }
+    HealthPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/StoredHealthRecord' }
+        next_cursor: { type: [string, 'null'] }
+    WellbeingPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/StoredWellbeingCheckin' }
+        next_cursor: { type: [string, 'null'] }
+    BootstrapPage:
+      type: object
+      additionalProperties: false
+      required: [profile, health_records, wellbeing_checkins, next_cursor]
+      properties:
+        profile: { $ref: '#/components/schemas/AstronautProfile' }
+        health_records:
+          type: array
+          items: { $ref: '#/components/schemas/StoredHealthRecord' }
+        wellbeing_checkins:
+          type: array
+          items: { $ref: '#/components/schemas/StoredWellbeingCheckin' }
+        next_cursor: { type: [string, 'null'] }
+    RiskAlert:
+      type: object
+      additionalProperties: false
+      required: [alert_id, severity, rule_id, explanation, created_at]
+      properties:
+        alert_id: { type: string }
+        severity: { type: string, enum: [info, warning, critical] }
+        rule_id: { type: string }
+        explanation: { type: string }
+        created_at: { type: string, format: date-time }
+        evidence_record_ids:
+          type: array
+          items: { type: string, format: uuid }
