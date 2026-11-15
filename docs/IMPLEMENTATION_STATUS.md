@@ -28,7 +28,11 @@ owner-scoped pagination; their storage interfaces are not yet connected to the
 unimplemented sync endpoint. Wellbeing dimensions are experimental self-reports,
 not clinically validated scores. Bootstrap returns the authenticated profile and
 a combined page of both history types, ordered by record ID, with the limit
-applied across both arrays. Alerts and sync operations remain unimplemented.
+applied across both arrays. The authenticated alerts endpoint returns stored
+alerts belonging to the current account. **BLOCKED:** alert generation and
+rule thresholds are not specified or approved; no risk rules are implemented.
+The endpoint can therefore return an empty list and does not imply that records
+have been assessed.
 History and bootstrap use record-ID ordering and opaque cursors; pages are not a
 consistent snapshot when records are added between requests. Records inserted
 before a continuation cursor will not appear in later pages.
