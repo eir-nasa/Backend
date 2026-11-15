@@ -26,7 +26,15 @@ def _auth_schema(connection: sqlite3.Connection) -> None:
     )""")
 
 
-MIGRATIONS: tuple[Migration, ...] = (_initial_schema, _auth_schema)
+def _health_schema(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE health_records (
+        record_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES auth_accounts(user_id),
+        record_json TEXT NOT NULL, received_at TEXT NOT NULL
+    )""")
+    connection.execute("CREATE INDEX health_records_owner_id ON health_records (owner_id, record_id)")
+
+
+MIGRATIONS: tuple[Migration, ...] = (_initial_schema, _auth_schema, _health_schema)
 
 
 def migrate(connection: sqlite3.Connection) -> None:

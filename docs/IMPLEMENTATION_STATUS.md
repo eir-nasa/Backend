@@ -22,4 +22,9 @@ Focused tests exercise authentication, revocation, expiry, device isolation,
 health, configuration, database lifecycle, migration rollback and startup
 failures. Login rate limiting is not implemented. Offline unlock and Android
 cache/outbox handling remain Android responsibilities and are not implemented
-here. Profile, bootstrap, history, alerts and sync operations remain unimplemented.
+here. Authenticated profile and physical-health history are implemented. Health
+records have validated SQLite storage, immutable IDs and owner-scoped pagination;
+the storage interface is not yet connected to the unimplemented sync endpoint.
+Bootstrap, wellbeing history, alerts and sync operations remain unimplemented.
+Health history uses record-ID ordering and opaque cursors; pages are not a
+consistent snapshot when records are added between requests.
