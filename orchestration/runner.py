@@ -77,30 +77,61 @@ def branch() -> str:
 
 
 def verify_remote_protections() -> None:
-    """Check GitHub protections, required CI and PR path before autonomous promotion."""
+    """Verify effective rules and visible bypass settings for each protected branch."""
     if not shutil.which("gh") or not shutil.which("codex"):
         raise RuntimeError("Both gh CLI and Codex CLI are required for --execute")
     command(["gh", "auth", "status"])
+    repo = json.loads(command(["gh", "api", "repos/{owner}/{repo}"]))
+    if (repo.get("allow_auto_merge") is not True
+            or repo.get("allow_squash_merge") is not True
+            or repo.get("allow_merge_commit") is not True):
+        raise RuntimeError("Repository auto-merge or required merge methods are not enabled")
     for target in ("dev", "main"):
-        payload = json.loads(command(["gh", "api", f"repos/{{owner}}/{{repo}}/branches/{target}/protection"]))
-        if not payload.get("required_pull_request_reviews"):
-            # GitHub may allow protected branches with no review count but PR requirement.
-            raise RuntimeError(f"{target}: pull-request requirement not verified; fail closed")
-        review = payload["required_pull_request_reviews"]
-        if review.get("required_approving_review_count", 0) != 0 or review.get("require_code_owner_reviews", False):
-            raise RuntimeError(f"{target}: human PR review requirement incompatible with unattended promotion")
-        checks = payload.get("required_status_checks") or {}
-        contexts = set(checks.get("contexts") or []) | {
-            entry.get("context", "") for entry in checks.get("checks", [])
-        }
-        if "quality" not in contexts:
-            raise RuntimeError(f"{target}: missing required 'quality' status check")
-        if not payload.get("enforce_admins", {}).get("enabled"):
-            raise RuntimeError(f"{target}: administrator bypass not disabled")
-        if payload.get("allow_force_pushes", {}).get("enabled", False):
-            raise RuntimeError(f"{target}: force push is enabled")
-        if payload.get("allow_deletions", {}).get("enabled", False):
-            raise RuntimeError(f"{target}: branch deletions enabled")
+        pages = json.loads(command([
+            "gh", "api", "--paginate", "--slurp",
+            f"repos/{{owner}}/{{repo}}/rules/branches/{target}?per_page=100",
+        ]))
+        if not isinstance(pages, list) or not pages or any(
+            not isinstance(page, list) for page in pages
+        ):
+            raise RuntimeError(f"{target}: incomplete effective rules response")
+        rules = [rule for page in pages for rule in page]
+        if not rules or any(not isinstance(rule, dict) or not isinstance(
+            rule.get("ruleset_id"), int
+        ) for rule in rules):
+            raise RuntimeError(f"{target}: effective rules lack ruleset provenance")
+        for ruleset_id in {rule["ruleset_id"] for rule in rules}:
+            detail = json.loads(command([
+                "gh", "api", f"repos/{{owner}}/{{repo}}/rulesets/{ruleset_id}",
+            ]))
+            if (detail.get("id") != ruleset_id or detail.get("enforcement") != "active"
+                    or detail.get("target") != "branch"
+                    or not isinstance(detail.get("bypass_actors"), list)):
+                raise RuntimeError(f"{target}: ruleset {ruleset_id} is incomplete or inactive")
+            # Conservatively reject all bypass actors: membership and token identity can change.
+            if detail["bypass_actors"]:
+                raise RuntimeError(f"{target}: ruleset {ruleset_id} has possible bypass actors")
+        types = {rule.get("type") for rule in rules}
+        if not {"pull_request", "required_status_checks", "non_fast_forward", "deletion"} <= types:
+            raise RuntimeError(f"{target}: missing required effective rules")
+        for rule in rules:
+            if rule.get("type") == "pull_request":
+                params = rule.get("parameters")
+                if (not isinstance(params, dict)
+                        or type(params.get("required_approving_review_count")) is not int
+                        or params["required_approving_review_count"] != 0
+                        or params.get("require_code_owner_review") is not False
+                        or params.get("require_last_push_approval") is not False):
+                    raise RuntimeError(f"{target}: human review requirements not compatible")
+        checks = [rule.get("parameters", {}).get("required_status_checks")
+                  for rule in rules if rule.get("type") == "required_status_checks"]
+        if any(not isinstance(entries, list) or any(
+            not isinstance(entry, dict) or not isinstance(entry.get("context"), str)
+            for entry in entries
+        ) for entries in checks) or not any(
+            entry["context"] == "quality" for entries in checks for entry in entries
+        ):
+            raise RuntimeError(f"{target}: missing or incomplete required quality check")
 
 
 def select_task(items: list[dict], state: dict) -> dict | None:
@@ -136,18 +167,35 @@ This is attempt {attempt}/{RETRIES}. Finish without prompting the operator."""
             capture=False)
 
 
+def confirmed_merge(head: str, base: str, expected_sha: str) -> str:
+    """Return PR state only after verifying the exact head and destination."""
+    pr = json.loads(command(["gh", "pr", "view", head, "--json",
+                             "state,baseRefName,headRefOid,mergedAt"]))
+    if pr.get("baseRefName") != base or pr.get("headRefOid") != expected_sha:
+        raise RuntimeError(f"PR {head} does not match expected head and base")
+    state = pr.get("state")
+    if state not in {"OPEN", "CLOSED", "MERGED"}:
+        raise RuntimeError(f"PR {head} has an unknown state")
+    if state == "MERGED" and not pr.get("mergedAt"):
+        raise RuntimeError(f"PR {head} merge is not confirmed")
+    return state
+
+
 def pr_and_wait(base: str, head: str, title: str) -> None:
     # Push feature and create PR; GitHub protection + required CI alone gates auto merge.
+    expected_sha = command(["git", "rev-parse", "HEAD"])
     command(["git", "push", "-u", "origin", head])
     try:
         command(["gh", "pr", "view", head, "--json", "number", "--jq", ".number"])
     except RuntimeError:
         command(["gh", "pr", "create", "--base", base, "--head", head,
                 "--title", title, "--body", "Autonomous EIR implementation. Must pass all required CI status checks."])
+    if confirmed_merge(head, base, expected_sha) != "OPEN":
+        raise RuntimeError(f"PR {head} is not open for promotion")
     command(["gh", "pr", "merge", head, "--auto", "--squash", "--delete-branch"])
     start = time.monotonic()
     while time.monotonic() - start < MAX_WAIT_SECONDS:
-        status = command(["gh", "pr", "view", head, "--json", "state", "--jq", ".state"])
+        status = confirmed_merge(head, base, expected_sha)
         if status == "MERGED":
             return
         if status == "CLOSED":
@@ -194,6 +242,7 @@ def run_one(item: dict, data: dict) -> None:
     command(["git", "pull", "--ff-only", "origin", "dev"])
     # Validate integrated dev independently before making release PR.
     quality_gate(ROOT)
+    expected_sha = command(["git", "rev-parse", "HEAD"])
     # main promotion only via protected GitHub PR, no direct local or remote main push.
     try:
         command(["gh", "pr", "view", "dev", "--json", "number", "--jq", ".number"])
@@ -201,10 +250,12 @@ def run_one(item: dict, data: dict) -> None:
         command(["gh", "pr", "create", "--base", "main", "--head", "dev",
                  "--title", f"EIR stable promotion after {name}",
                  "--body", "Promote integration branch after required CI and branch protections."])
+    if confirmed_merge("dev", "main", expected_sha) != "OPEN":
+        raise RuntimeError("dev -> main PR is not open for promotion")
     command(["gh", "pr", "merge", "dev", "--auto", "--merge"])
     start = time.monotonic()
     while time.monotonic() - start < MAX_WAIT_SECONDS:
-        status = command(["gh", "pr", "view", "dev", "--json", "state", "--jq", ".state"])
+        status = confirmed_merge("dev", "main", expected_sha)
         if status == "MERGED":
             entry.update(status="COMPLETED", commit=command(["git", "rev-parse", "HEAD"]))
             state_save(data)
@@ -232,6 +283,8 @@ def main() -> int:
     if not (ROOT / ".git").exists():
         raise RuntimeError("Initialize Git with committed main/dev first; run bootstrap.sh")
     git_clean()
+    if any(entry.get("status") == "IN_PROGRESS" for entry in data["tasks"].values()):
+        raise RuntimeError("Interrupted task requires manual merge and state reconciliation")
     verify_remote_protections()
     while item := select_task(items, data):
         try:
