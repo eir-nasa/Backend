@@ -1,78 +1,93 @@
-# EIR Backend — autonomous Codex starter
+# EIR Backend
 
-This package is **orchestration and governance scaffolding**, not a completed FastAPI backend. Contract is approved v0.1 baseline; no app endpoints are implemented here. Do not point production applications at it yet.
+Backend de demostración de **EIR**, una aplicación de monitoreo de salud y bienestar para astronautas desarrollada en el contexto de NASA Space Apps Challenge 2026. Ofrece una API REST para cuentas sintéticas, registros de salud y bienestar, sincronización y consulta de alertas existentes.
 
-## What it does
+Las mediciones y los autorreportes son experimentales y no constituyen diagnósticos ni capacidades clínicamente validadas. El repositorio está destinado a datos de demostración sintéticos; no debe contener información real de astronautas o pacientes.
 
-- Runs independent Codex CLI implementation turns in a deterministic order from `orchestration/tasks.json`.
-- Checks real source changes, protects the contract/harness, runs local quality gates, retries up to three times, and persists state in `.orchestrator/`.
-- Pushes feature branches and merges with **protected GitHub PRs**: `feature/* → dev → main` after required CI. Never pushes to `dev` or `main` directly.
-- Blocks if prerequisites or branch protection are missing. Never deploys to EC2 automatically.
-- Promotes to main automatically only when PR protections require CI checks and zero human reviews. This requires appropriate GitHub plan, rights and repo settings; it is not configured for you.
+## Alcance
 
-## Prerequisites on your NixOS development machine
+El backend implementa autenticación online por dispositivo, rotación y revocación de sesiones, consulta del perfil y del historial, y carga de registros con identificadores estables y resultados individuales. La lectura de alertas está disponible, pero **no existe generación de alertas ni Risk Engine**: las reglas y umbrales siguen pendientes de aprobación.
 
-- `git`, `python >=3.11`, `codex` CLI, `gh` CLI, and network/auth access to Codex and GitHub.
-- On NixOS, place those tools in a development shell (`nix develop` or `nix-shell`) or install them through your Nix configuration. You need a working Python venv with packages available.
-- GitHub repository access with the permissions to create PRs and configure protections. **No direct agent access to AWS or Cloudflare**.
+Android es responsable de Room, el outbox durable y los mecanismos offline. Apollo está previsto para ejecutarse localmente en Android mediante Google AI Edge; este backend no realiza inferencia de modelos. La implementación Android y su integración no forman parte de este repositorio.
 
-## First-time setup
+La API contiene las diez operaciones del [contrato OpenAPI aprobado](contracts/openapi.yaml). El documento OpenAPI generado por FastAPI presenta diferencias de esquemas, seguridad y códigos de respuesta respecto al contrato; consulte [API REST](docs/technical/04-api.md) antes de generar clientes. La nota del propio contrato que cuestiona su aprobación quedó obsoleta según [DECISIONS.md](docs/DECISIONS.md).
 
-```bash
-unzip EIR_Backend_Autonomy.zip
-cd EIR_Backend_Autonomy
-./scripts_bootstrap.sh
-# Set your actual repository URL:
-git remote add origin git@github.com:YOUR_ACCOUNT/YOUR_REPOSITORY.git
-git push -u origin main
-git push -u origin dev
-# Complete protection configuration in the GitHub settings as described below.
-gh auth login
-codex login
-python -m orchestration.runner --dry-run
-python -m orchestration.runner --execute
+## Tecnologías y estructura
+
+- Python 3.11+, FastAPI, Pydantic y Uvicorn.
+- SQLite con migraciones aplicadas al iniciar la aplicación.
+- Docker y Docker Compose para ejecución local preparada.
+- pytest, Ruff y validación de OpenAPI para comprobaciones de desarrollo.
+
+| Ruta | Contenido |
+|---|---|
+| `src/eir/` | Aplicación, autenticación, perfiles, registros, sincronización, alertas y base de datos. |
+| `contracts/` | Contrato OpenAPI aprobado y archivo de integridad. |
+| `tests/` | Pruebas del backend y de la infraestructura de automatización. |
+| `docs/` | Decisiones, handoff, estado y documentación técnica. |
+| `orchestration/` | Infraestructura de automatización y gobernanza del repositorio. |
+| `Dockerfile`, `compose.yaml` | Definiciones para construir y ejecutar el servicio. |
+
+## Ejecución local
+
+Cree un entorno virtual e instale el paquete con sus dependencias de desarrollo:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e '.[dev]'
 ```
 
-`--execute` **actually invokes Codex and can create/push/merge pull requests without further prompts** after preflight. Use only after repository rights and checks are verified. It may incur model usage costs. You can interrupt it locally. It has bounded attempts and timeouts.
+Inicie el servidor y consulte su disponibilidad:
 
-## Mandatory GitHub protections (both `dev` and `main`)
+```sh
+uvicorn eir.main:app
+```
 
-Repo Settings → Branches / Rulesets (or equivalent GitHub UI):
+```sh
+curl --fail http://127.0.0.1:8000/api/v1/health
+```
 
-1. Require PR before merging; approvals **0** if using fully unattended auto-promotions.
-2. Require status check **`quality`** from `.github/workflows/ci.yml`, with branch up-to-date/strict checking enabled.
-3. Apply rules to administrators, disable bypass; disallow force pushes and deletions.
-4. Repository Settings → General → Pull Requests: enable **Allow auto-merge** and merge commits for `dev → main`; enable squash merges for feature PRs.
-5. Configure the branch rules to prevent direct push to main/dev and ensure required checks are from the expected GitHub Actions app. Verify `gh api repos/{owner}/{repo}/branches/main/protection` works.
+La respuesta esperada es `{"status":"ok"}`. Este endpoint comprueba la disponibilidad de la API, no la salud de una persona. La configuración `EIR_DATABASE_PATH` selecciona el archivo SQLite; su valor predeterminado es `eir.sqlite3` en el directorio de ejecución. Al iniciar se aplican las migraciones pendientes.
 
-**Safety trade-off:** zero human reviews means autonomous code can reach `main` as soon as CI passes. Automated testing cannot prove the implementation is clinically safe or fully correct. Keep this as a synthetic-data hackathon environment with no real patient records. Consider scheduled manual audits of main.
+No existen cuentas por defecto ni registro público. Para crear una cuenta de demostración sintética, ejecute:
 
-**Compatibility note:** `gh` CLI permissions, policies, rate limits, and auto-merge availability differ across repositories. The runner fails closed rather than bypassing GitHub settings. As written, it uses the GitHub branch-protection endpoint; a repository secured only through rulesets may require extending preflight verification before running.
+```sh
+python -m eir.auth demo "Synthetic Demo" demo-mission
+```
 
-## Gates
+El comando solicita y confirma la contraseña sin mostrarla. No incluya contraseñas ni tokens en argumentos, archivos versionados o logs. El archivo SQLite contiene información de cuentas, sesiones y registros y debe protegerse junto con sus respaldos.
 
-- OpenAPI 3.1 structure + immutable SHA-256 lock.
-- Ruff lint checks on `src`, `tests`, `orchestration`.
-- pytest tests, plus `tests/test_backend_*.py` requirement after backend code exists.
-- Protected file/path guard before commit.
-- GitHub required `quality` check on protected PRs.
+## Docker Compose
 
-Run locally:
+Con Docker Engine y el plugin Compose instalados:
 
-```bash
-python -m orchestration.validate_contract
-python -m ruff check src tests orchestration
+```sh
+docker compose up -d --build
+docker compose ps
+curl --fail http://127.0.0.1:8000/api/v1/health
+```
+
+Compose publica el servicio en `127.0.0.1:8000` y conserva la base en el volumen `eir-data`, montado en `/data`. Para aprovisionar una cuenta dentro del contenedor:
+
+```sh
+docker compose exec backend python -m eir.auth demo "Synthetic Demo" demo-mission
+```
+
+El plan de EC2, Cloudflare DNS y Caddy está documentado, pero su despliegue externo y HTTPS no se han verificado. Consulte [Docker y despliegue](docs/technical/07-deployment.md) para conocer persistencia, backups y requisitos pendientes.
+
+## Pruebas
+
+Con las dependencias de desarrollo instaladas:
+
+```sh
 python -m pytest -q tests
+python -m ruff check src tests orchestration
+python -m orchestration.validate_contract
 ```
 
-Note: The CI `quality` gate validates the OpenAPI schema and lock, but does not independently check that generated FastAPI schema is semantically identical unless a Codex task adds that test. The `integration` task is responsible for such an executable contract conformance suite; until then the automatic main promotion validates only the currently implemented tests. **This is a material limitation of auto-promotion.**
+La validación del contrato comprueba su estructura y el lock; no demuestra por sí sola que la implementación sea completamente compatible. Los resultados y límites de las pruebas se detallan en [pruebas y validaciones](docs/technical/08-testing.md).
 
-## Known design limits
+## Documentación
 
-- The `runner.py` task engine is sequential. “Agents” are roles within Codex tasks, not independent concurrent processes; no unmanaged background Codex sessions.
-- Works with remote GitHub PR auto-merge and polls status while local machine is running. No work continues when your computer is off.
-- `dev` and `main` are never modified directly by the runner, only via GitHub merge operations.
-- A blocked task remains documented; the runner stops rather than silently skipping contractual dependencies.
-- On exception after Codex changes, partial code remains on the feature branch to examine manually. No destructive reset is attempted.
-- The initial AGENTS.md/contract/harness are protected from Codex edits by both instruction and deterministic diff inspection. This is not an OS-level sandbox security boundary; Codex CLI sandboxing is still required.
-- Does not set up remote GitHub settings automatically. Admin approvals, domain, AWS deployment and model authorization remain outside this harness.
+La [documentación técnica](docs/technical/README.md) cubre arquitectura, base de datos, API, seguridad, sincronización, despliegue, pruebas y estado de implementación. Las decisiones funcionales se encuentran en [EIR_HANDOFF.md](docs/EIR_HANDOFF.md) y [DECISIONS.md](docs/DECISIONS.md); el [estado de implementación](docs/IMPLEMENTATION_STATUS.md) recoge limitaciones adicionales.
