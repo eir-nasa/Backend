@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict
 
+from eir.auth import router as auth_router
 from eir.config import Settings
 from eir.database import open_database
 
@@ -28,6 +29,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             connection.close()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+    app.include_router(auth_router)
 
     @app.get("/api/v1/health", response_model=HealthResponse, operation_id="getHealth")
     async def get_health() -> HealthResponse:
