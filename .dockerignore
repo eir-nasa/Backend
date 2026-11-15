@@ -1,0 +1,7 @@
+**
+!pyproject.toml
+!src/
+!src/eir/
+!src/eir/**
+src/eir/**/__pycache__/
+src/eir/**/*.pyc
