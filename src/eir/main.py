@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict
 
+from eir.alerts import router as alerts_router
 from eir.auth import router as auth_router
 from eir.config import Settings
 from eir.database import open_database
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(profiles_router)
     app.include_router(health_records_router)
     app.include_router(wellbeing_router)
+    app.include_router(alerts_router)
     app.include_router(sync_router)
 
     @app.get("/api/v1/health", response_model=HealthResponse, operation_id="getHealth")
