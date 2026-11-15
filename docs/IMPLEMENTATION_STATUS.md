@@ -26,6 +26,9 @@ here. Authenticated profile, physical-health history and wellbeing history are
 implemented. Both record types have validated SQLite storage, immutable IDs and
 owner-scoped pagination; their storage interfaces are not yet connected to the
 unimplemented sync endpoint. Wellbeing dimensions are experimental self-reports,
-not clinically validated scores. Bootstrap, alerts and sync operations remain
-unimplemented. History uses record-ID ordering and opaque cursors; pages are not
-a consistent snapshot when records are added between requests.
+not clinically validated scores. Bootstrap returns the authenticated profile and
+a combined page of both history types, ordered by record ID, with the limit
+applied across both arrays. Alerts and sync operations remain unimplemented.
+History and bootstrap use record-ID ordering and opaque cursors; pages are not a
+consistent snapshot when records are added between requests. Records inserted
+before a continuation cursor will not appear in later pages.
