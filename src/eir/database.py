@@ -12,7 +12,21 @@ def _initial_schema(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE TABLE eir_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
 
-MIGRATIONS: tuple[Migration, ...] = (_initial_schema,)
+def _auth_schema(connection: sqlite3.Connection) -> None:
+    connection.execute("""CREATE TABLE auth_accounts (
+        user_id TEXT PRIMARY KEY, astronaut_id TEXT NOT NULL UNIQUE,
+        username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        display_name TEXT NOT NULL, mission_id TEXT NOT NULL,
+        profile_version INTEGER NOT NULL CHECK (profile_version >= 1)
+    )""")
+    connection.execute("""CREATE TABLE auth_sessions (
+        session_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES auth_accounts(user_id),
+        device_id TEXT NOT NULL, signing_key BLOB, refresh_hash TEXT UNIQUE,
+        refresh_expires_at INTEGER
+    )""")
+
+
+MIGRATIONS: tuple[Migration, ...] = (_initial_schema, _auth_schema)
 
 
 def migrate(connection: sqlite3.Connection) -> None:
