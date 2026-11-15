@@ -36,7 +36,7 @@ def test_lifecycle_migrates_persists_and_closes(tmp_path):
         async with app.router.lifespan_context(app):
             connection = app.state.database
             assert connection.execute("PRAGMA foreign_keys").fetchone() == (1,)
-            assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+            assert connection.execute("PRAGMA user_version").fetchone() == (len(database.MIGRATIONS),)
             connection.execute("INSERT INTO eir_metadata VALUES ('example', 'value')")
             connection.commit()
         with pytest.raises(sqlite3.ProgrammingError):
