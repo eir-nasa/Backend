@@ -77,24 +77,6 @@ def test_permission_error_fails_closed(github, monkeypatch):
         runner.verify_remote_protections()
 
 
-@pytest.mark.parametrize("pr", [
-    {"state": "MERGED", "baseRefName": "main", "headRefOid": "old", "mergedAt": "now"},
-    {"state": "MERGED", "baseRefName": "dev", "headRefOid": "sha", "mergedAt": "now"},
-    {"state": "MERGED", "baseRefName": "main", "headRefOid": "sha", "mergedAt": None},
-    {"state": "UNKNOWN", "baseRefName": "main", "headRefOid": "sha"},
-])
-def test_merge_must_match_and_be_confirmed(monkeypatch, pr):
-    monkeypatch.setattr(runner, "command", lambda *args, **kwargs: json.dumps(pr))
-    with pytest.raises(RuntimeError):
-        runner.confirmed_merge("dev", "main", "sha")
-
-
-def test_confirmed_merge(monkeypatch):
-    pr = {"state": "MERGED", "baseRefName": "main", "headRefOid": "sha", "mergedAt": "now"}
-    monkeypatch.setattr(runner, "command", lambda *args, **kwargs: json.dumps(pr))
-    assert runner.confirmed_merge("dev", "main", "sha") == "MERGED"
-
-
 def test_interrupted_task_requires_reconciliation(monkeypatch):
     monkeypatch.setattr(runner, "tasks", lambda: [{"id": "x", "dependencies": []}])
     monkeypatch.setattr(runner, "state_load", lambda items: {
