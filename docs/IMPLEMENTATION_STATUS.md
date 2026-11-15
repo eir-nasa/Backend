@@ -45,3 +45,52 @@ several response schemas and documented status codes, and describes logout as
 200 instead of 204. The OpenAPI HTTP endpoint is disabled; the inspection uses
 `app.openapi()`. Matching operation inventory and tested response instances do
 not establish full semantic compatibility. Login rate limiting is not implemented.
+
+## Deployment preparation
+
+The included Dockerfile packages the backend for Python 3.12 and runs one
+Uvicorn process as an unprivileged user. Compose publishes the container port
+only at `127.0.0.1:8000` and stores SQLite at `/data/eir.sqlite3` in the
+`eir-data` named volume. Keep one backend instance: SQLite and the current
+single-process application are not a multi-host deployment design. The volume
+contains account, session and synthetic record data; protect it and its
+backups. Do not remove it when recreating the container. Back up SQLite using
+its online backup API or while the backend is stopped; include a tested restore
+procedure. The image contains no preconfigured accounts.
+
+On an Ubuntu host with Docker Engine and the Compose plugin installed, from a
+checkout of this project run:
+
+```sh
+docker compose up -d --build
+docker compose exec backend python -m eir.auth demo "Synthetic Demo" demo-mission
+curl --fail http://127.0.0.1:8000/api/v1/health
+```
+
+The interactive provisioning command prompts twice for a password; use only
+synthetic accounts and do not put passwords in command arguments or logs.
+Account provisioning is needed once per account, not on every restart. Check
+`docker compose ps` and the health response `{"status":"ok"}`; health means
+API availability, not a clinical assessment.
+
+For the planned EC2 deployment, configure the host firewall and security group
+to allow public TCP 80 and 443, restrict SSH to authorized sources, and do not
+open 8000. Point the chosen API DNS name at the host's public IP using Cloudflare
+DNS only initially. Install Caddy on the host and replace its site configuration
+with the actual DNS name, for example:
+
+```caddyfile
+api.example.org {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+Use the real domain, validate the Caddy configuration and reload Caddy. Verify
+public DNS, inbound 80/443 and Caddy's certificate issuance, then request
+`https://<actual-api-domain>/api/v1/health` from an external client with normal
+TLS verification. Android should use the corresponding HTTPS base URL and
+verify certificates normally. If Cloudflare proxying is enabled later, use Full
+(strict). DNS, EC2, Caddy, certificates and external HTTPS have not been
+configured or verified by this change; LAN certificate provisioning remains
+future work. The image and Compose setup require an actual Docker build and
+runtime check on a host with a working Docker daemon.
