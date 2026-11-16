@@ -1,34 +1,34 @@
-# 04 — API REST
+# 04 — REST API
 
-La fuente normativa es el [contrato aprobado](../../contracts/openapi.yaml); esta página describe el comportamiento observado en [routers](../../src/eir/). Todas las rutas usan `/api/v1`. No existe documentación interactiva ni endpoint HTTP OpenAPI: `docs_url`, `redoc_url` y `openapi_url` están desactivados. Las respuestas de error propias usan `{"code":"unauthorized","message":"Invalid credentials"}` para 401, con `WWW-Authenticate: Bearer`. Fallos de validación de FastAPI devuelven 422 con `detail`, estructura distinta de `ApiError`.
+The [approved contract](../../contracts/openapi.yaml) is normative; this page describes observed behavior in the [routers](../../src/eir/). All routes use `/api/v1`. Interactive documentation and the OpenAPI HTTP endpoint are disabled: `docs_url`, `redoc_url`, and `openapi_url` are turned off. Custom error responses use `{"code":"unauthorized","message":"Invalid credentials"}` for 401, with `WWW-Authenticate: Bearer`. FastAPI validation failures return 422 with `detail`, a structure different from `ApiError`.
 
-| Método y ruta | Auth | Request | Response / errores observables |
+| Method and route | Auth | Request | Observable response / errors |
 |---|---|---|---|
-| GET `/health` | No | Sin cuerpo | 200 `{"status":"ok"}` |
-| POST `/auth/login` | No | JSON `username`, `password`, `device_id`; strings no vacíos, dispositivo máximo 128; sin extras | 200 tokens, `user` y `online_authenticated_at`; 401 credenciales incorrectas; 422 validación |
-| POST `/auth/refresh` | No | JSON `refresh_token`, `device_id`, strings no vacíos, sin extras | 200 tokens rotados; 401 token, dispositivo o expiración inválidos; 422 validación |
-| POST `/auth/logout` | Bearer | Sin cuerpo requerido | 204 sin cuerpo; 401 sesión inválida o ya revocada |
-| GET `/users/me` | Bearer | Sin cuerpo | 200 perfil; 401 |
-| GET `/users/me/bootstrap` | Bearer | `cursor` opcional, `limit` 1–100, default 30 | 200 perfil, `health_records`, `wellbeing_checkins`, `next_cursor`; 401; 422 cursor o límite inválido |
-| GET `/users/me/health-records` | Bearer | Mismo cursor/límite | 200 `items`, `next_cursor`; 401; 422 |
-| GET `/users/me/wellbeing-checkins` | Bearer | Mismo cursor/límite | 200 `items`, `next_cursor`; 401; 422 |
-| GET `/users/me/alerts` | Bearer | Sin cuerpo | 200 `items`; 401. Devuelve solo alertas existentes, sin paginación ni generación |
-| POST `/sync/records` | Bearer | `device_id` y `records`; véase abajo | 200 `results`, `server_time`; 401; 422 `invalid_batch` para JSON/envoltura/UUID inválidos |
+| GET `/health` | No | No body | 200 `{"status":"ok"}` |
+| POST `/auth/login` | No | JSON `username`, `password`, `device_id`; non-empty strings, device max 128; no extras | 200 tokens, `user`, and `online_authenticated_at`; 401 invalid credentials; 422 validation |
+| POST `/auth/refresh` | No | JSON `refresh_token`, `device_id`, non-empty strings, no extras | 200 rotated tokens; 401 invalid token, device, or expiry; 422 validation |
+| POST `/auth/logout` | Bearer | No required body | 204 no body; 401 invalid or already revoked session |
+| GET `/users/me` | Bearer | No body | 200 profile; 401 |
+| GET `/users/me/bootstrap` | Bearer | Optional `cursor`, `limit` 1–100, default 30 | 200 profile, `health_records`, `wellbeing_checkins`, `next_cursor`; 401; 422 invalid cursor or limit |
+| GET `/users/me/health-records` | Bearer | Same cursor/limit | 200 `items`, `next_cursor`; 401; 422 |
+| GET `/users/me/wellbeing-checkins` | Bearer | Same cursor/limit | 200 `items`, `next_cursor`; 401; 422 |
+| GET `/users/me/alerts` | Bearer | No body | 200 `items`; 401. Returns existing alerts only, with no pagination or generation |
+| POST `/sync/records` | Bearer | `device_id` and `records`; see below | 200 `results`, `server_time`; 401; 422 `invalid_batch` for invalid JSON/envelope/UUID |
 
-Perfil: `user_id`, `astronaut_id`, `username`, `display_name`, `mission_id`, `profile_version`. Login agrega `access_token`, `refresh_token`, `token_type: Bearer`, `expires_in: 900` y `online_authenticated_at` UTC; refresh devuelve esos cuatro campos de sesión. No se reproducen credenciales en ejemplos. Para probar login suministre interactivamente una contraseña sintética, sin registrarla en el historial de shell. Use un cliente que proteja el token al incluir `Authorization: Bearer <access_token>`.
+Profile fields: `user_id`, `astronaut_id`, `username`, `display_name`, `mission_id`, `profile_version`. Login adds `access_token`, `refresh_token`, `token_type: Bearer`, `expires_in: 900`, and UTC `online_authenticated_at`; refresh returns these four session fields. Credentials are not reproduced in examples. To test login, provide a synthetic password interactively without recording it in shell history. Use a client that protects the token when sending `Authorization: Bearer <access_token>`.
 
-Ejemplo sintético de sync (el UUID es ilustrativo):
+Synthetic sync example (the UUID is illustrative):
 
 ```json
 {"device_id":"demo-device","records":[{"record_id":"550e8400-e29b-41d4-a716-446655440000","recorded_at":"2026-01-01T12:00:00Z","schema_version":1,"type":"health_record","payload":{"heart_rate_bpm":70}}]}
 ```
 
-Respuesta ilustrativa: `{"results":[{"record_id":"550e8400-e29b-41d4-a716-446655440000","status":"accepted"}],"server_time":"2026-01-01T12:00:01+00:00"}`. Un replay equivalente produce `duplicate`; datos distintos o colisión con otra cuenta/tipo producen `conflict`; invalidación de un elemento produce `rejected`; fallo SQLite produce `retryable`. Un UUID inválido invalida todo el lote antes de escribir. `device_id` tiene 1–128 caracteres, `records` entre 1 y 20 y no se permiten claves adicionales en la envoltura. No se comprueba que el `device_id` del lote coincida con el de la sesión.
+Illustrative response: `{"results":[{"record_id":"550e8400-e29b-41d4-a716-446655440000","status":"accepted"}],"server_time":"2026-01-01T12:00:01+00:00"}`. An equivalent replay returns `duplicate`; different data or a collision with another account/type returns `conflict`; an invalid individual record returns `rejected`; a SQLite failure returns `retryable`. An invalid UUID invalidates the entire batch before any write. `device_id` must be 1–128 characters, `records` must contain 1–20 items, and extra envelope keys are not allowed. The batch `device_id` is not checked against the session's device.
 
-Cada registro exige UUID, fecha ISO con zona horaria, `schema_version` entero estricto igual a 1, tipo y payload. `health_record`: al menos uno de `heart_rate_bpm`, `glucose_mg_dl`, `temperature_c`, `sleep_hours`, `systolic_bp_mmhg`, `diastolic_bp_mmhg`; valores numéricos finitos, no negativos salvo temperatura; sueño 0–24; ritmo y presiones enteros. `wellbeing_checkin`: `mood`, `connection`, `energy`, `purpose`, `sleep`, enteros de 1 a 5, y `note` opcional string hasta 500 caracteres. Los payloads rechazan campos extra y null; la envoltura del registro admite campos extra. Se guardan fechas normalizadas a UTC y las respuestas de historial agregan `received_at`. Cursores son opacos, se ordena por UUID textual y no existe snapshot; bootstrap comparte el límite entre los dos tipos.
+Each record requires a UUID, ISO timestamp with timezone, strict integer `schema_version` equal to 1, type, and payload. `health_record`: at least one of `heart_rate_bpm`, `glucose_mg_dl`, `temperature_c`, `sleep_hours`, `systolic_bp_mmhg`, or `diastolic_bp_mmhg`; finite numeric values, non-negative except temperature; sleep 0–24; heart rate and blood pressure values must be integers. `wellbeing_checkin`: `mood`, `connection`, `energy`, `purpose`, and `sleep` integers from 1 to 5, plus an optional string `note` up to 500 characters. Payloads reject extra fields and nulls; the record envelope allows extra fields. Timestamps are stored normalized to UTC, and history responses add `received_at`. Cursors are opaque, records are ordered by textual UUID, and there is no snapshot; bootstrap shares the limit across both types.
 
-Alertas existentes tienen `alert_id`, `severity` (`info`, `warning`, `critical`), `rule_id`, `explanation`, `created_at` y opcional `evidence_record_ids`. Un ejemplo de respuesta vacía es `{"items":[]}`, que no demuestra evaluación.
+Existing alerts have `alert_id`, `severity` (`info`, `warning`, `critical`), `rule_id`, `explanation`, `created_at`, and optional `evidence_record_ids`. An example empty response is `{"items":[]}`; this does not demonstrate that any evaluation occurred.
 
-## Compatibilidad
+## Compatibility
 
-Las pruebas comparan inventario de rutas y operationId, el esquema de perfil y algunas instancias de respuesta con el baseline, no toda la semántica. `app.openapi()` omite esquema Bearer, request de sync y varios esquemas y estados; describe logout como 200 aunque devuelve 204. El contrato declara 429 para login y sync pero no hay rate limiting; 400, 413 y 503 de sync tampoco están implementados explícitamente como respuestas de aplicación. La implementación emite 422 de validación de FastAPI en rutas donde el contrato no lo documenta, y ese formato no es `ApiError`. Estas observaciones no garantizan exhaustividad; faltan pruebas de conformidad completas. El texto del contrato que niega aprobación está obsoleto según [DECISIONS](../DECISIONS.md).
+Tests compare route inventory and operationId, the profile schema, and some response instances against the baseline, but not all semantics. `app.openapi()` omits the Bearer scheme, sync request, and several schemas and status codes; it describes logout as 200 although the endpoint returns 204. The contract declares 429 for login and sync, but there is no rate limiting; sync 400, 413, and 503 are also not explicitly implemented as application responses. The implementation emits FastAPI 422 validation responses on routes where the contract does not document them, and that format is not `ApiError`. These observations may not be exhaustive; complete conformance tests are missing. The contract text that denies approval is outdated, as explained in [DECISIONS](../DECISIONS.md).

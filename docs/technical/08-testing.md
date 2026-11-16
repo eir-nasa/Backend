@@ -1,8 +1,8 @@
-# 08 — Pruebas y validaciones
+# 08 — Tests and Validation
 
-Se usa pytest, FastAPI TestClient/httpx, PyYAML, jsonschema y openapi-spec-validator; Ruff comprueba reglas seleccionadas E4, E7, E9, F e I. Dependencias declaradas en [pyproject.toml](../../pyproject.toml). Los tests `test_backend_*` cubren aplicación; `test_orchestrator`, `test_pr_recovery` y `test_ruleset_validation` cubren la infraestructura de gobernanza, sin ejecutar el roadmap.
+The project uses pytest, FastAPI TestClient/httpx, PyYAML, jsonschema, and openapi-spec-validator; Ruff checks selected rules E4, E7, E9, F, and I. Dependencies are declared in [pyproject.toml](../../pyproject.toml). The `test_backend_*` tests cover the application; `test_orchestrator`, `test_pr_recovery`, and `test_ruleset_validation` cover governance infrastructure without executing the roadmap.
 
-Comandos ejecutados desde raíz el 15 de noviembre de 2026, con el entorno virtual existente y sin caché de pytest/Ruff:
+Commands run from the repository root on November 15, 2026, using the existing virtual environment and disabling the pytest/Ruff caches:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider tests
@@ -11,8 +11,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m orchestration.validate_contract
 docker compose config --quiet
 ```
 
-Resultados reales: **79 passed en 2.70 s**; Ruff `All checks passed!`; validador `OpenAPI validated and lock verified`; Compose config terminó con código 0. El Python del sistema carece de pytest, Ruff y PyYAML, pero el entorno virtual existente sí permitió los comandos anteriores. `docker info` falló por permisos sobre el socket; no se hizo build ni prueba real de contenedor. No se encontró `mmdc`, por lo que los diagramas no se validaron con un renderizador Mermaid.
+Actual results: **79 passed in 2.70 s**; Ruff reported `All checks passed!`; the validator reported `OpenAPI validated and lock verified`; Compose config exited with code 0. The system Python lacks pytest, Ruff, and PyYAML, but the existing virtual environment supported the commands above. `docker info` failed because of socket permissions; no image build or real container test was performed. `mmdc` was not found, so the diagrams were not checked with a Mermaid renderer.
 
-Cobertura funcional ejercitada por los tests: autenticación, vencimientos, rotación, sesiones y aislamiento; configuración, ciclo de vida y rollback de migraciones; validación y paginación de ambos tipos, bootstrap, alertas existentes y ausencia de generación; sync, replay, conflicto y fallo de almacenamiento; viaje sintético con reinicio. Los tests de despliegue inspeccionan archivos y ejecutan el comando de app de forma local, no construyen una imagen. Las pruebas de integración comparan inventario y operationId de OpenAPI, esquema de perfil y algunas respuestas contra JSON Schema; el validador comprueba la especificación y hash, no equivalencia completa con FastAPI. Véase [test_backend_integration.py](../../tests/test_backend_integration.py).
+Functional behavior exercised by tests: authentication, expiration, rotation, sessions, and isolation; configuration, lifecycle, and migration rollback; validation and pagination for both record types, bootstrap, existing alerts, and absence of alert generation; sync, replay, conflict, and storage failure; synthetic end-to-end flow with restart. Deployment tests inspect files and run the app command locally; they do not build an image. Integration tests compare OpenAPI route inventory and operationId, profile schema, and some responses against JSON Schema; the validator checks the specification and hash, not full equivalence with FastAPI. See [test_backend_integration.py](../../tests/test_backend_integration.py).
 
-No hay porcentaje de cobertura medido aquí. Las pruebas no verifican Android, acceso concurrente real, seguridad exhaustiva, rendimiento, conectividad externa, TLS ni despliegue en AWS. Su éxito tampoco acredita validación clínica.
+No coverage percentage was measured here. Tests do not verify Android, real concurrent access, exhaustive security, performance, external connectivity, TLS, or AWS deployment. Passing tests also do not establish clinical validation.

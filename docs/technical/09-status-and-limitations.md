@@ -1,24 +1,24 @@
-# 09 — Estado de implementación y mejoras
+# 09 — Implementation Status and Limitations
 
-La clasificación se basa en código y pruebas locales descritas en [pruebas](08-testing.md); «verificada» significa para los escenarios probados, no certificada para producción.
+This classification is based on code and local tests described in [tests](08-testing.md); “verified” means for the tested scenarios, not certified for production.
 
-| Estado | Funcionalidad y evidencia |
+| Status | Functionality and evidence |
 |---|---|
-| Implementada y verificada | Health, configuración y migraciones transaccionales: [foundation](../../tests/test_backend_foundation.py). Login, rotación, expiración, logout y separación de sesiones: [auth](../../tests/test_backend_auth.py). Perfil e historiales por cuenta, bootstrap, sync con replay/conflicto y persistencia/reinicio: [integration](../../tests/test_backend_integration.py), tests específicos de sync e historiales. |
-| Implementada y verificada | Consulta aislada de alertas existentes y ausencia de generación al guardar registros: [alerts tests](../../tests/test_backend_alerts.py). |
-| Parcial | Compatibilidad OpenAPI: rutas e IDs coinciden y se validan ejemplos; faltan security scheme, schemas y estados en documento generado, y logout se describe 200 en lugar de 204. Rate limiting y algunos errores del contrato no implementados. Véase [API](04-api.md). |
-| Parcial | Dockerfile y Compose definidos; configuración estática verificada, build/runtime no. HTTPS y despliegue externos no verificados. |
-| Parcial | Paginación por UUID sin snapshot; registros insertados antes del cursor pueden omitirse. `device_id` de sync se valida pero no se vincula a la sesión. No se han probado garantías generales de concurrencia. |
-| Pendiente | Rate limiting, revisión de seguridad, pruebas de carga/concurrencia y conformidad integral; backups y recuperación ensayados; infraestructura HTTPS. Android Room/outbox, cifrado y comportamiento offline no son verificables en este repositorio. |
-| Bloqueada por diseño | Generación de alertas/Risk Engine: reglas, evidencia y umbrales no especificados ni aprobados. Una lista vacía no indica evaluación. Aprovisionamiento posterior al MVP, política de expiración y diseño criptográfico offline requieren decisiones. |
-| Pendiente y externo | Verificación de modelo, dispositivo e inferencia Apollo/Google AI Edge en Android. No existe inferencia en backend. |
+| Implemented and verified | Health, configuration, and transactional migrations: [foundation](../../tests/test_backend_foundation.py). Login, rotation, expiration, logout, and session separation: [auth](../../tests/test_backend_auth.py). Account-scoped profile and history, bootstrap, sync replay/conflict, and persistence/restart: [integration](../../tests/test_backend_integration.py), plus sync and history tests. |
+| Implemented and verified | Account-scoped retrieval of existing alerts and no alert generation when saving records: [alerts tests](../../tests/test_backend_alerts.py). |
+| Partial | OpenAPI compatibility: routes and IDs match and examples are validated; the generated document lacks a security scheme, schemas, and status codes, and describes logout as 200 instead of 204. Rate limiting and some contract errors are not implemented. See [API](04-api.md). |
+| Partial | Dockerfile and Compose are defined; static configuration is verified, but build/runtime are not. External HTTPS and deployment are unverified. |
+| Partial | UUID pagination has no snapshot; records inserted before the cursor may be omitted. Sync `device_id` is validated but not linked to the session. General concurrency guarantees have not been tested. |
+| Pending | Rate limiting, security review, load/concurrency tests, and full conformance; tested backups and recovery; HTTPS infrastructure. Android Room/outbox, encryption, and offline behavior cannot be verified in this repository. |
+| Blocked by design | Alert generation/Risk Engine: rules, evidence, and thresholds are unspecified and unapproved. An empty list does not indicate evaluation. Post-MVP provisioning, expiration policy, and offline cryptographic design require decisions. |
+| Pending and external | Verification of the model, device, and Apollo/Google AI Edge inference on Android. There is no backend inference. |
 
-Prioridades propuestas:
+Proposed priorities:
 
-1. **Riesgo de seguridad:** definir y aplicar controles frente a fuerza bruta, revisar implementación de tokens, manejo de claves y acceso al volumen; verificar TLS y política de logs antes de cualquier exposición. Mantener solo datos sintéticos.
-2. **Errores funcionales/contrato:** acordar y corregir divergencias de OpenAPI generado, códigos y formas de error; añadir pruebas semánticas de contrato completas. Decidir si el `device_id` de sync debe compararse con la sesión antes de cambiar comportamiento. Revisar concurrencia SQLite y semántica de páginas.
-3. **Operación:** construir y ejecutar imagen en host autorizado; probar persistencia, backup/restauración y recuperación; validar dominio, DNS, Caddy y certificado externo.
-4. **Bloqueos funcionales:** acordar reglas, evidencia y límites de Risk Engine antes de implementarlo; resolver diseño offline y política de sesión con responsables de Android. Ninguna regla experimental debe presentarse como diagnóstico.
-5. **Opcional:** mejorar observabilidad sin datos sensibles y documentar decisiones de rendimiento y operación tras obtener requisitos.
+1. **Security risk:** define and apply brute-force controls; review token implementation, key handling, and volume access; verify TLS and logging policy before any exposure. Use synthetic data only.
+2. **Functional/contract issues:** agree on and fix differences in generated OpenAPI, status codes, and error formats; add complete semantic contract tests. Decide whether sync `device_id` should be compared with the session before changing behavior. Review SQLite concurrency and page semantics.
+3. **Operations:** build and run the image on an authorized host; test persistence, backup/restore, and recovery; validate the domain, DNS, Caddy, and external certificate.
+4. **Functional blockers:** agree on Risk Engine rules, evidence, and limits before implementation; resolve offline design and session policy with Android owners. Do not present experimental rules as diagnoses.
+5. **Optional:** improve observability without sensitive data and document performance and operational decisions after requirements are available.
 
-El [README raíz](../../README.md) sigue diciendo que no hay endpoints; es histórico y contradice el código. La nota no aprobada dentro del contrato también es histórica respecto de la aprobación, según [DECISIONS](../DECISIONS.md). No se verificó un despliegue real ni el frontend.
+The [root README](../../README.md) documents the implemented endpoints. The contract's note stating that it is unapproved is also historical, as explained in [DECISIONS](../DECISIONS.md). No real deployment or frontend was verified.

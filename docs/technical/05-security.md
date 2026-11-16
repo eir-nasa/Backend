@@ -1,50 +1,50 @@
-# 05 — Autenticación y seguridad
+# 05 — Authentication and Security
 
-Las cuentas sintéticas se crean localmente con `python -m eir.auth USERNAME DISPLAY_NAME MISSION_ID`, que solicita contraseña dos veces sin eco. No hay registro público ni credenciales por defecto. Se almacena scrypt con salt aleatorio de 16 bytes y parámetros n=16384, r=8, p=1; la comparación usa `hmac.compare_digest`. Para usuario inexistente se ejecuta también scrypt con hash ficticio. Fuentes: [auth.py](../../src/eir/auth.py), [database.py](../../src/eir/database.py).
+Synthetic accounts are created locally with `python -m eir.auth USERNAME DISPLAY_NAME MISSION_ID`, which prompts for the password twice without echoing it. There is no public registration or default credential. Passwords are stored using scrypt with a random 16-byte salt and parameters n=16384, r=8, p=1; comparison uses `hmac.compare_digest`. For a nonexistent user, scrypt is also run with a dummy hash. Sources: [auth.py](../../src/eir/auth.py), [database.py](../../src/eir/database.py).
 
-La secuencia muestra la sesión por dispositivo que se crea tras verificar credenciales.
-
-```mermaid
-sequenceDiagram
-  participant A as Android
-  participant API as FastAPI
-  participant DB as SQLite
-  A->>API: Login (usuario, contraseña, device_id)
-  API->>DB: Consultar cuenta
-  API->>API: Verificar scrypt
-  API->>DB: Crear sesión y guardar clave y hash refresh
-  API-->>A: Access, refresh, perfil y hora online
-```
-
-El access token JWT HS256 contiene `sid` y `exp`, expira en 900 segundos y se firma con clave aleatoria propia de la sesión, guardada en SQLite. En cada solicitud se valida firma, expiración y existencia de sesión; el propietario proviene del `user_id` almacenado. El refresh opaco tiene 30 días, se guarda solo su SHA-256 y se vincula al `device_id`. Su rotación reemplaza hash y clave de firma en transacción: invalida ambos tokens anteriores y reinicia la expiración del refresh. No renueva `online_authenticated_at` ni la ventana offline.
-
-Esta secuencia muestra rotación; un refresh antiguo o de otro dispositivo recibe 401.
+The sequence shows the per-device session created after credentials are verified.
 
 ```mermaid
 sequenceDiagram
   participant A as Android
   participant API as FastAPI
   participant DB as SQLite
-  A->>API: Refresh y device_id
-  API->>DB: BEGIN IMMEDIATE; buscar hash, dispositivo y expiración
-  DB-->>API: Sesión válida
-  API->>DB: Rotar clave, hash y vencimiento; COMMIT
-  API-->>A: Nuevos access y refresh
+  A->>API: Login (username, password, device_id)
+  API->>DB: Look up account
+  API->>API: Verify scrypt
+  API->>DB: Create session and store key and refresh hash
+  API-->>A: Access, refresh, profile, and online time
 ```
 
-La revocación elimina únicamente la sesión autenticada; repetir logout con token revocado devuelve 401.
+The HS256 JWT access token contains `sid` and `exp`, expires after 900 seconds, and is signed with a random per-session key stored in SQLite. Each request validates the signature, expiration, and session existence; the owner comes from the stored `user_id`. The opaque refresh token lasts 30 days, only its SHA-256 is stored, and it is bound to the `device_id`. Rotation replaces the hash and signing key in a transaction, invalidating both previous tokens and resetting the refresh expiration. It does not renew `online_authenticated_at` or the offline window.
+
+This sequence shows token rotation; an old refresh token or one from another device receives 401.
 
 ```mermaid
 sequenceDiagram
   participant A as Android
   participant API as FastAPI
   participant DB as SQLite
-  A->>API: Logout con Bearer
-  API->>DB: Verificar sesión y firma
-  API->>DB: Eliminar sesión
-  API-->>A: 204 sin cuerpo
+  A->>API: Refresh and device_id
+  API->>DB: BEGIN IMMEDIATE; find hash, device, and expiry
+  DB-->>API: Valid session
+  API->>DB: Rotate key, hash, and expiry; COMMIT
+  API-->>A: New access and refresh tokens
 ```
 
-Los endpoints privados filtran por cuenta verificada. Varias sesiones de la misma cuenta pueden coexistir; logout no revoca las demás. El aislamiento está probado para casos concretos, no auditado formalmente. No hay rate limiting, bloqueo frente a fuerza bruta, inventario/revocación administrativa de sesiones, cifrado de SQLite ni gestión externa de claves en el código. Las claves de firma y hashes sensibles están en la base: restringir acceso y proteger backups. TLS, secretos en logs de infraestructura, políticas de retención y auditoría requieren verificación de despliegue; no se ha probado un entorno productivo. La validación del token es propia del proyecto y requiere revisión independiente.
+Revocation removes only the authenticated session; repeating logout with a revoked token returns 401.
 
-La limpieza de caché, protección de pendientes y desbloqueo offline de 24 horas son decisiones Android, no endpoints backend. El diseño criptográfico offline sigue abierto. Nunca usar datos reales ni incluir secretos en ejemplos o logs.
+```mermaid
+sequenceDiagram
+  participant A as Android
+  participant API as FastAPI
+  participant DB as SQLite
+  A->>API: Logout with Bearer
+  API->>DB: Verify session and signature
+  API->>DB: Delete session
+  API-->>A: 204 no body
+```
+
+Private endpoints filter by verified account. Multiple sessions for the same account can coexist; logout does not revoke the others. Isolation has been tested for specific cases, not formally audited. The code has no rate limiting, brute-force lockout, administrative session inventory/revocation, SQLite encryption, or external key management. Signing keys and sensitive hashes are in the database: restrict access and protect backups. TLS, secrets in infrastructure logs, retention policies, and auditing require deployment verification; no production environment has been tested. Token validation is project-specific and needs independent review.
+
+Cache cleanup, protection of pending data, and 24-hour offline unlock are Android decisions, not backend endpoints. Offline cryptographic design remains open. Never use real data or include secrets in examples or logs.

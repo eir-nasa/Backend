@@ -1,9 +1,9 @@
-# 01 — Descripción general
+# 01 — Overview
 
-EIR busca apoyar el registro de salud y bienestar en un contexto de conectividad intermitente. Este backend proporciona un repositorio remoto de demostración para cuentas sintéticas: autenticación online, perfil, carga idempotente de registros, consulta de historiales y lectura de alertas ya almacenadas. No ofrece diagnósticos; las mediciones y autorreportes son experimentales y no están clínicamente validados.
+EIR aims to support health and wellbeing tracking in an environment with intermittent connectivity. This backend provides a remote demonstration repository for synthetic accounts: online authentication, profiles, idempotent record uploads, history queries, and retrieval of already stored alerts. It does not provide diagnoses; measurements and self-reports are experimental and are not clinically validated.
 
-La implementación es un monolito modular Python 3.11+ con FastAPI, Pydantic, SQLite y Uvicorn; el Dockerfile usa Python 3.12. Android se comunica por HTTP y es responsable de Room, outbox durable y mecanismos offline. Apollo y Google AI Edge están previstos en Android; aquí no hay inferencia LLM. La implementación Android y su integración no se encuentran en este repositorio y no se han verificado.
+The implementation is a modular monolith using Python 3.11+, FastAPI, Pydantic, SQLite, and Uvicorn; the Dockerfile uses Python 3.12. Android communicates over HTTP and is responsible for Room, a durable outbox, and offline mechanisms. Apollo and Google AI Edge are planned for Android; this backend does not perform LLM inference. The Android implementation and its integration are not in this repository and have not been verified.
 
-Las diez operaciones del contrato están presentes en el código, con limitaciones de compatibilidad OpenAPI detalladas en [API](04-api.md). Existe lectura de alertas, pero no generación ni Risk Engine. No hay registro público ni cuentas por defecto. El plan de despliegue HTTPS no acredita un servicio desplegado. Las pruebas locales y sus límites se describen en [pruebas](08-testing.md).
+The code contains all ten contract operations, with OpenAPI compatibility limitations described in [API](04-api.md). Alerts can be read, but there is no alert generation or Risk Engine. There is no public registration or default account. The HTTPS deployment plan does not establish that a service has been deployed. Local tests and their limitations are described in [tests](08-testing.md).
 
-Fuentes: [handoff](../EIR_HANDOFF.md), [decisiones](../DECISIONS.md), [aplicación](../../src/eir/main.py), [configuración](../../pyproject.toml).
+Sources: [handoff](../EIR_HANDOFF.md), [decisions](../DECISIONS.md), [application](../../src/eir/main.py), [configuration](../../pyproject.toml).

@@ -1,22 +1,22 @@
-# 02 — Arquitectura
+# 02 — Architecture
 
-El backend es un proceso FastAPI que comparte una conexión SQLite durante su ciclo de vida. Al arrancar abre la base y aplica migraciones; al terminar cierra la conexión. Cada router verifica explícitamente el Bearer cuando corresponde. Los endpoints son asíncronos, pero usan SQLite síncrono; no existe una capa de servicios o repositorios separada de los módulos funcionales.
+The backend is a FastAPI process that shares a SQLite connection throughout its lifecycle. It opens the database and applies migrations at startup, then closes the connection at shutdown. Each router explicitly verifies Bearer authentication where required. Endpoints are asynchronous but use synchronous SQLite; there is no service or repository layer separate from the functional modules.
 
-Este diagrama distingue los componentes presentes en este repositorio de las responsabilidades y planes externos, cuya implementación no se verificó.
+This diagram distinguishes components present in this repository from external responsibilities and plans whose implementation has not been verified.
 
 ```mermaid
 flowchart LR
-  A[Android: Room y outbox previstos] -->|HTTPS previsto / HTTP local| B[API FastAPI]
-  A -.-> C[Apollo on-device previsto]
+  A[Android: planned Room and outbox] -->|Planned HTTPS / local HTTP| B[FastAPI API]
+  A -.-> C[Planned on-device Apollo]
   B --> D[(SQLite)]
 ```
 
-El diagrama siguiente muestra dependencias del código existente y su conexión común.
+The following diagram shows dependencies in the existing code and their shared connection.
 
 ```mermaid
 flowchart TD
   M[main: app y lifespan] --> CFG[config]
-  M --> DB[database: conexión y migraciones]
+  M --> DB[database: connection and migrations]
   M --> AU[auth]
   M --> PR[profiles]
   M --> HE[health_records]
@@ -40,17 +40,17 @@ flowchart TD
   AU --> SQL
 ```
 
-El flujo de datos depende de la operación: sync escribe; perfil, bootstrap, historiales y alertas leen. Health es público.
+Data flows depend on the operation: sync writes; profile, bootstrap, history, and alerts read. Health is public.
 
 ```mermaid
 flowchart LR
-  REQ[Solicitud] --> ROUTER[Router FastAPI]
-  ROUTER --> AUTH[Verificar sesión cuando corresponde]
-  AUTH --> VAL[Validar parámetros o registros]
+  REQ[Request] --> ROUTER[FastAPI router]
+  ROUTER --> AUTH[Verify session where required]
+  AUTH --> VAL[Validate parameters or records]
   VAL --> SQL[(SQLite)]
-  SQL --> RESP[Respuesta JSON o 204]
+  SQL --> RESP[JSON or 204 response]
 ```
 
-`src/eir`: `main.py` construye app y health; `config.py` lee la ruta; `database.py` define cinco migraciones; `auth.py` gestiona cuentas/sesiones; `profiles.py` perfil/bootstrap; `health_records.py` y `wellbeing.py` validan, guardan y consultan; `sync.py` procesa lotes; `alerts.py` lee alertas. `contracts/` contiene baseline y lock; `tests/` pruebas; `orchestration/` automatización de gobernanza, fuera del runtime API; `docs/` decisiones; Dockerfile y Compose preparan ejecución. No hay directorio de migraciones externo: están en Python.
+`src/eir`: `main.py` builds the app and health endpoint; `config.py` reads the database path; `database.py` defines five migrations; `auth.py` manages accounts and sessions; `profiles.py` handles profiles and bootstrap; `health_records.py` and `wellbeing.py` validate, store, and query records; `sync.py` processes batches; `alerts.py` reads alerts. `contracts/` contains the baseline and lock; `tests/` contains tests; `orchestration/` contains governance automation outside the API runtime; `docs/` contains decisions; the Dockerfile and Compose prepare execution. There is no external migrations directory; migrations are in Python.
 
-Decisiones y consecuencias: SQLite simplifica despliegue y persistencia local, pero el diseño actual no es multihost; UUID inmutable permite reintentos, pero un conflicto requiere resolución externa; paginación por ID no ofrece snapshot; firma por sesión permite revocación, pero requiere proteger la base. El plan de un solo proceso no es prueba de seguridad bajo concurrencia. Fuentes: [main](../../src/eir/main.py), [migraciones](../../src/eir/database.py), [decisiones](../DECISIONS.md).
+Decisions and consequences: SQLite simplifies deployment and local persistence, but the current design is not multi-host; immutable UUIDs allow retries, but conflicts require external resolution; ID-based pagination does not provide a snapshot; per-session signing allows revocation but requires database protection. The single-process plan is not proof of concurrency safety. Sources: [main](../../src/eir/main.py), [migrations](../../src/eir/database.py), [decisions](../DECISIONS.md).
